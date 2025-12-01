@@ -44,70 +44,69 @@ import { is } from '../../.nuxt/eslint-typegen';
  * ```
  */
 export const useResource = <T>(baseUrl: string) => {
-  const baseURLLocal = localStorage.getItem('apiUrl')?.toString()
-  const loading = ref(false)
-  const item = ref<T | null>(null)
-  const items = ref<T[]>([])
-  const isError = ref(false)
+  const loading = ref(false);
+  const item = ref<T | null>(null);
+  const items = ref<T[]>([]);
+  const isError = ref(false);
 
-  const service = ApiService<T>(baseUrl)
+  const service = ApiService<T>(baseUrl);
 
   // Crear
   const create = async (data: T) => {
-    loading.value = true
-    isError.value = false
+    loading.value = true;
+    isError.value = false;
     try {
-      item.value = await service.post(data)
-      return item.value
+      item.value = await service.post(data);
+      return item.value;
     } catch (err) {
-      console.error('Error en create:', err)
-      isError.value = true
-      throw err
+      console.error("Error en create:", err);
+      isError.value = true;
+      throw err;
     } finally {
-      loading.value = false
+      loading.value = false;
     }
-  }
+  };
 
   // Actualizar
   const update = async (data: T) => {
-    loading.value = true
+    loading.value = true;
     try {
-      item.value = await service.put(data)
-      return item.value
+      item.value = await service.put(data);
+      return item.value;
     } finally {
-      loading.value = false
+      loading.value = false;
     }
-  }
+  };
 
   // Eliminar
   const remove = async (query?: Record<string, any>) => {
-    loading.value = true
+    loading.value = true;
     try {
-      return await service.delete(query)
+      return await service.delete(query);
     } finally {
-      loading.value = false
+      loading.value = false;
     }
-  }
+  };
 
   // Obtener lista
   const getAll = async (query?: Record<string, any>) => {
-    loading.value = true
+    loading.value = true;
 
     try {
-      const data = await service.get(query)
+      const data = await service.get(query);
 
       if (data) {
-        items.value = Array.isArray(data) ? (data as unknown as T[]) : [data]
+        items.value = Array.isArray(data) ? (data as unknown as T[]) : [data];
       }
 
-      return items.value
+      return items.value;
     } catch (error) {
-      console.error('Error en getAll:', error)
-      throw error
+      console.error("Error en getAll:", error);
+      throw error;
     } finally {
-      loading.value = false
+      loading.value = false;
     }
-  }
+  };
 
   return {
     loading,
@@ -117,6 +116,6 @@ export const useResource = <T>(baseUrl: string) => {
     create,
     update,
     remove,
-    getAll
-  }
-}
+    getAll,
+  };
+};

@@ -4,8 +4,20 @@ import type { AccordionItem, SelectItem } from '@nuxt/ui'
 import { useResource } from '~/composable/useResource'
 import { useToast } from '#imports'
 import { useServiceManager } from '~/composable/usePrintServiceActions'
+import { useServerStatus } from '~/composable/useServerStatus'
 
 const toast = useToast()
+
+/* -------------------------------------------------------------------------------------------------
+   NUEVO: ESTADO DEL SERVICIO VIA WEBSOCKET (DESDE EL COMPOSABLE)
+------------------------------------------------------------------------------------------------- */
+
+const { isConnected, serverStatus } = useServerStatus()
+
+/* -------------------------------------------------------------------------------------------------
+   RESTO DE TU CÓDIGO
+------------------------------------------------------------------------------------------------- */
+
 export interface ServerConfigResponse {
   ok: boolean
   message: string
@@ -42,6 +54,8 @@ export interface PrinterType {
 
 const modo = ref<number | undefined>()
 const check = ref('tabler:edit')
+const isDisable = ref(true)
+
 const iconEdit = computed(() => {
   return isDisable.value ? check.value : 'ci:check-big'
 })
@@ -64,9 +78,6 @@ const serverConfig = ref<ServerConfig>({
 })
 
 const response = ref<Printer[]>([])
-const isDisable = ref(true)
-const serverStatus = ref('Cargando...')
-
 const items: AccordionItem[] = [
   {
     label: 'Configuración',
@@ -77,18 +88,14 @@ const items: AccordionItem[] = [
 const printers = ref<SelectItem[]>([])
 
 const modos = ref<SelectItem[]>([
-  {
-    label: 'USB',
-    value: 1
-  },
-  {
-    label: 'Red',
-    value: 2
-  }
+  { label: 'USB', value: 1 },
+  { label: 'Red', value: 2 }
 ])
 
 let timeoutId: number | undefined
-let statusCheckInterval: number | undefined
+
+/* --- Watch para animación de "Cambios aplicados" --- */
+
 watch(isDisable, (newValue) => {
   if (!newValue) {
     check.value = 'ci:check-big'
@@ -116,18 +123,20 @@ watch(isDisable, (newValue) => {
 
 const emits = defineEmits(['defaultPrinter'])
 
+/* --- Watch impresora seleccionada --- */
 watch(
   () => serverConfig.value.defaultPrinterId,
   (newId) => {
     const printer = response.value.find(p => p.id === newId)
-    if (printer) {
-      modo.value = printer.tipoId
-    }
+    if (printer) modo.value = printer.tipoId
   },
   { immediate: true }
 )
 
+/* --- Actualizar configuración --- */
+
 const APPLY_CHANGES = useResource<ServerConfig>('/service/serverConfig')
+
 async function applyChanges() {
   try {
     isDisable.value = !isDisable.value
@@ -152,150 +161,85 @@ async function applyChanges() {
         serverStatus.value = 'Error al Guardar'
       }
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error aplicando cambios:', error)
     serverStatus.value = 'Error al Guardar'
   }
 }
 
+/* --- Cargar impresoras --- */
+
 const PRINTERS = useResource<PrinterConfigResponse>('/service/printConfig')
+
 async function getPrinters() {
-  // const URL = '/service/printConfig'
   const { getAll } = PRINTERS
 
   try {
     const data = await getAll()
-
-    // Manejar si getAll() devuelve un array con la respuesta dentro
     const responseData = Array.isArray(data) ? data[0] : data
 
-    if (responseData?.ok && responseData?.response && responseData.response.length > 0) {
-      // Guardar directamente el array de impresoras
+    if (responseData?.ok && responseData?.response?.length > 0) {
       response.value = responseData.response
-
-      // Mapear para el USelect con el formato correcto: label y value
-      printers.value = response.value.map<SelectItem>(p => ({
-        label: `${p.direccion_Nombre} `,
+      printers.value = response.value.map(p => ({
+        label: `${p.direccion_Nombre}`,
         value: p.id
       }))
-    } else {
-      console.warn('No se encontraron impresoras o estructura incorrecta')
-      console.warn('responseData?.ok:', responseData?.ok)
-      console.warn('responseData?.response:', responseData?.response)
     }
   } catch (error) {
     console.error('Error al cargar impresoras:', error)
   }
 }
 
+/* --- Cargar serverConfig --- */
+
 const SERVER_CONFIG = useResource<ServerConfigResponse>('/service/serverConfig')
+
 async function getServerConfig() {
   const { getAll } = SERVER_CONFIG
 
   try {
     const data = await getAll()
-
-    // Acceso correcto según la estructura de tu API
     const responseData = Array.isArray(data) ? data[0] : data
 
     if (responseData?.ok && responseData?.response?.length > 0) {
-      // Asignar cada propiedad para asegurar reactividad
       const config = responseData.response[0]
-      serverConfig.value.id = config.id
-      serverConfig.value.url = config.url
-      serverConfig.value.port = Number(config.port)
-      serverConfig.value.defaultPrinterId = config.defaultPrinterId
+      serverConfig.value = {
+        id: config.id,
+        url: config.url,
+        port: Number(config.port),
+        defaultPrinterId: config.defaultPrinterId
+      }
       emits('defaultPrinter', config?.defaultPrinter?.direccion_Nombre)
-    } else {
-
     }
   } catch (error) {
     console.error('Error al cargar configuración del servidor:', error)
   }
 }
 
-// Agregar nueva interfaz para la respuesta del ping
-export interface PingResponse {
-  ok: boolean
-  message: string
-}
+/* --- Control del servidor (start/restart/stop) --- */
 
-// Función para verificar el estado del servidor
-async function checkServerStatus() {
-  const URL = '/ping'
-  const { getAll } = useResource<PingResponse>(URL)
-
-  try {
-    await getAll()
-    serverStatus.value = 'Conectado'
-    // toast.add({
-    //   title: 'En linea',
-    //   description: 'Servicio disponible',
-    //   color: 'success'
-
-    // })
-  } catch (error) {
-    serverStatus.value = 'Desconectado'
-    console.error('Error al verificar estado del servidor:', error)
-    return false
-  }
-}
-
-// Función corregida para controlar el servidor
 const controlServer = async (action: 'start' | 'restart' | 'stop') => {
   serverStatus.value = `Ejecutando ${action}...`
 
-  // Instancia del composable según tu servicio Windows
   const { startService, restartService, stopService } = useServiceManager('Spooler')
 
   try {
-    // Ejecuta la acción solicitada
     if (action === 'start') await startService()
     if (action === 'restart') await restartService()
     if (action === 'stop') await stopService()
 
-    // Esperamos un momento para que el servidor aplique los cambios
     await new Promise(resolve => setTimeout(resolve, 1500))
-
-    // Revalidamos el estado real
-    await checkServerStatus()
-
   } catch (error) {
     console.error(`Error durante '${action}':`, error)
     serverStatus.value = 'Error'
-
-    // Verificar estado aunque haya fallado
-    setTimeout(() => checkServerStatus(), 1000)
   }
 }
 
-async function CHECK_SERVER_STATUS() {
-  await checkServerStatus()
-  if (serverStatus.value === 'Conectado') {
-    await getServerConfig()
-    await getPrinters()
-    const printer = response.value.find(p => p.id === serverConfig.value.defaultPrinterId)
-    if (printer) {
-      modo.value = printer.tipoId
-    }
-  }
-}
-onMounted(async () => {
-  await CHECK_SERVER_STATUS()
+/* --- MONTADO --- */
 
-  statusCheckInterval = setInterval(async () => {
-    CHECK_SERVER_STATUS()
-  }, 20000)
-})
-
-onUnmounted(() => {
-  // Limpiar los intervalos y timeouts cuando el componente se desmonte
-  if (statusCheckInterval) {
-    clearInterval(statusCheckInterval)
-  }
-  if (timeoutId) {
-    clearTimeout(timeoutId)
-  }
+onMounted(() => {
+  getServerConfig()
+  getPrinters()
 })
 </script>
 

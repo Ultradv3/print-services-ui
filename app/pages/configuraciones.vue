@@ -20,7 +20,6 @@ export interface PrinterType {
 }
 
 const isDisable = ref(true)
-const DEFATULT_PRINTER = ref('nota')
 const printSelect = ref<SelectItem>([])
 const loading = ref(false)
 const ERROR = ref(false)
@@ -65,9 +64,19 @@ interface IAccordionItem {
 
 const test = ref<IAccordionItem[]>([])
 
-const saveChanges = (item) => {
+const UPDATE_PRINTER = useResource<PrinterConfigResponse>('/service/printConfig')
+const saveChanges = async (item) => {
+  const { update } = UPDATE_PRINTER
   if (!isDisable.value) {
-    console.log('Guardando cambios para:', item.label, item.content)
+    const data = {
+      id: item.id,
+      direccion_Nombre: item.content.Direccion,
+      puerto: item.content.Puerto,
+      modeloImpresora: item.content.Modelo,
+      tipoId: item.content.Tipo.id
+    }
+
+    await update(data)
   }
   isDisable.value = !isDisable.value
 }
@@ -80,10 +89,6 @@ async function crearPrinter() {
   ERROR.value = isError.value
 
   try {
-    // const data = await $fetch(URL, {
-    //   method: 'POST',
-    //   body: agregarPrinter.value
-    // })
     const data = await create(agregarPrinter.value)
     // Si llegó aquí, todo salió bien.
     console.log('Datos:', data)
